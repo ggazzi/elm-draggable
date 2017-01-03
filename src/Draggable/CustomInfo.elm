@@ -1,4 +1,4 @@
-module Draggable
+module Draggable.CustomInfo
     exposing
         ( State
         , Msg
@@ -14,7 +14,7 @@ module Draggable
         )
 
 {-|
-This library provides and easy way to make DOM elements (Html or Svg) draggable.
+This library provides and easy way to make DOM elements (Html or Svg) draggable, extracting custom information from the mouse events.
 
 ## When is dragging considered?
 An element is considered to be dragging when the mouse is pressed **and** moved before it is released. Otherwise, the action is considered a click. This is useful because in some cases you may want to support both actions.
@@ -40,7 +40,7 @@ An element is considered to be dragging when the mouse is pressed **and** moved 
 
 import Cmd.Extra
 import Internal
-import Json.Decode
+import Json.Decode as Json
 import Mouse exposing (Position)
 import VirtualDom
 
@@ -51,33 +51,27 @@ type alias Delta =
     ( Float, Float )
 
 
-{-| Type representing a key used for targeting draggable elements.
--}
-type alias Key =
-    String
-
-
 {-| Drag state to be included in model.
 -}
-type State
-    = State (Internal.State Key)
+type State info
+    = State (Internal.State info)
 
 
 {-| A message type for updating the internal drag state.
 -}
-type Msg
-    = Msg (Internal.Msg Key)
+type Msg info
+    = Msg (Internal.Msg info)
 
 
 {-| An event declaration for the draggable config.
 -}
-type alias Event msg =
-    Internal.Event Key msg
+type alias Event info msg =
+    Internal.Event info msg
 
 
 {-| Initial drag state
 -}
-init : State
+init : State info
 init =
     State Internal.NotDragging
 
@@ -85,10 +79,10 @@ init =
 {-| Handle update messages for the draggable model. It assumes that the drag state will be stored under the key `drag`.
 -}
 update :
-    Config msg
-    -> Msg
-    -> { m | drag : State }
-    -> ( { m | drag : State }, Cmd msg )
+    Config info msg
+    -> Msg info
+    -> { m | drag : State info }
+    -> ( { m | drag : State info }, Cmd msg )
 update config msg model =
     let
         ( dragState, dragCmd ) =
@@ -97,7 +91,7 @@ update config msg model =
         { model | drag = dragState } ! [ dragCmd ]
 
 
-updateDraggable : Config msg -> Msg -> State -> ( State, Cmd msg )
+updateDraggable : Config info msg -> Msg info -> State info -> ( State info, Cmd msg )
 updateDraggable (Config config) (Msg msg) (State drag) =
     let
         ( newDrag, newMsgMaybe ) =
@@ -108,7 +102,7 @@ updateDraggable (Config config) (Msg msg) (State drag) =
 
 {-| Handle mouse subscriptions used for dragging
 -}
-subscriptions : (Msg -> msg) -> State -> Sub msg
+subscriptions : (Msg info -> msg) -> State info -> Sub msg
 subscriptions envelope (State drag) =
     case drag of
         Internal.NotDragging ->
@@ -120,37 +114,24 @@ subscriptions envelope (State drag) =
                 |> Sub.map (envelope << Msg)
 
 
-{-| DOM event handler to start dragging on mouse down. It requires a `String` key for the element, in order to provide support for multiple drag targets sharing the same drag state. Of course, if only one element is draggable, it can have any value, including `""`.
+{-| DOM event handler to start dragging on mouse down. It requires a JSON parser, which may extract information from the click event.
 
-    div [ mouseTrigger "element-id" DragMsg ] [ text "Drag me" ]
+A common use case is providing a `String` key for the element, in order to provide support for multiple drag targets sharing the same drag state.
+
+    div [ mouseTrigger DragMsg (Json.Decode.succeed "element-id") ] [ text "Drag me" ]
 -}
-mouseTrigger : String -> (Msg -> msg) -> VirtualDom.Property msg
-mouseTrigger key envelope =
+mouseTrigger : (Msg info -> msg) -> Json.Decoder info -> VirtualDom.Property msg
+mouseTrigger envelope infoDecoder =
     let
         ignoreDefaults =
             VirtualDom.Options True True
+
+        makeMsg info position =
+            envelope <| Msg <| Internal.StartDragging info position
     in
         VirtualDom.onWithOptions "mousedown"
             ignoreDefaults
-            (whenLeftMouseButtonPressed <|
-                Json.Decode.map (envelope << Msg << Internal.StartDragging key) Mouse.position
-            )
-
-
-whenLeftMouseButtonPressed : Json.Decode.Decoder a -> Json.Decode.Decoder a
-whenLeftMouseButtonPressed decoder =
-    Json.Decode.field "button" Json.Decode.int
-        |> Json.Decode.andThen
-            (\button ->
-                case button of
-                    -- https://www.w3.org/TR/DOM-Level-2-Events/events.html#Events-MouseEvent
-                    -- 0 indicates the primary (usually left) mouse button
-                    0 ->
-                        decoder
-
-                    _ ->
-                        Json.Decode.fail "Event is only relevant when the main mouse button was pressed."
-            )
+            (Json.map2 makeMsg infoDecoder Mouse.position)
 
 
 
@@ -159,15 +140,15 @@ whenLeftMouseButtonPressed decoder =
 
 {-| Configuration of a draggable model.
 -}
-type Config msg
-    = Config (Internal.Config Key msg)
+type Config info msg
+    = Config (Internal.Config info msg)
 
 
 {-| Basic config
 
     config = basicConfig OnDragBy
 -}
-basicConfig : (Delta -> msg) -> Config msg
+basicConfig : (Delta -> msg) -> Config info msg
 basicConfig onDragByListener =
     let
         defaultConfig =
@@ -176,7 +157,7 @@ basicConfig onDragByListener =
         Config { defaultConfig | onDragBy = Just << onDragByListener }
 
 
-{-| Custom config, including arbitrary options. See [`Events`](#Draggable-Events).
+{-| Custom config, including arbitrary options. See [`Events`](#Draggable-CustomInfo-Events).
 
     config = customConfig
         [ onDragBy OnDragBy
@@ -184,6 +165,6 @@ basicConfig onDragByListener =
         , onDragEnd OnDragEnd
         ]
 -}
-customConfig : List (Event msg) -> Config msg
+customConfig : List (Event info msg) -> Config info msg
 customConfig events =
     Config <| List.foldl (<|) Internal.defaultConfig events

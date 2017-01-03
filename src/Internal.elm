@@ -7,14 +7,14 @@ type alias Key =
     String
 
 
-type State
+type State info
     = NotDragging
-    | DraggingTentative Key Position
+    | DraggingTentative info Position
     | Dragging Position
 
 
-type Msg
-    = StartDragging Key Position
+type Msg info
+    = StartDragging info Position
     | DragAt Position
     | StopDragging
 
@@ -23,20 +23,20 @@ type alias Delta =
     ( Float, Float )
 
 
-type alias Config msg =
-    { onDragStart : Key -> Maybe msg
+type alias Config info msg =
+    { onDragStart : info -> Maybe msg
     , onDragBy : Delta -> Maybe msg
     , onDragEnd : Maybe msg
-    , onClick : Key -> Maybe msg
-    , onMouseDown : Key -> Maybe msg
+    , onClick : info -> Maybe msg
+    , onMouseDown : info -> Maybe msg
     }
 
 
-type alias Event msg =
-    Config msg -> Config msg
+type alias Event info msg =
+    Config info msg -> Config info msg
 
 
-defaultConfig : Config msg
+defaultConfig : Config info msg
 defaultConfig =
     { onDragStart = \_ -> Nothing
     , onDragBy = \_ -> Nothing
@@ -46,15 +46,15 @@ defaultConfig =
     }
 
 
-updateAndEmit : Config msg -> Msg -> State -> ( State, Maybe msg )
+updateAndEmit : Config info msg -> Msg info -> State info -> ( State info, Maybe msg )
 updateAndEmit config msg drag =
     case ( drag, msg ) of
-        ( NotDragging, StartDragging key initialPosition ) ->
-            ( DraggingTentative key initialPosition, config.onMouseDown key )
+        ( NotDragging, StartDragging info initialPosition ) ->
+            ( DraggingTentative info initialPosition, config.onMouseDown info )
 
-        ( DraggingTentative key oldPosition, DragAt _ ) ->
+        ( DraggingTentative info oldPosition, DragAt _ ) ->
             ( Dragging oldPosition
-            , config.onDragStart key
+            , config.onDragStart info
             )
 
         ( Dragging oldPosition, DragAt newPosition ) ->
@@ -62,9 +62,9 @@ updateAndEmit config msg drag =
             , config.onDragBy (distanceTo newPosition oldPosition)
             )
 
-        ( DraggingTentative key _, StopDragging ) ->
+        ( DraggingTentative info _, StopDragging ) ->
             ( NotDragging
-            , config.onClick key
+            , config.onClick info
             )
 
         ( Dragging _, StopDragging ) ->
@@ -88,7 +88,7 @@ distanceTo end start =
     )
 
 
-logInvalidState : State -> Msg -> a -> a
+logInvalidState : State info -> Msg info -> a -> a
 logInvalidState drag msg result =
     let
         str =

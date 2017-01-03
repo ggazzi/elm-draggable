@@ -30,7 +30,7 @@ updateWithEvents =
     Internal.updateAndEmit fullConfig
 
 
-fullConfig : Internal.Config EmitMsg
+fullConfig : Internal.Config Key EmitMsg
 fullConfig =
     { onDragStart = Just << OnDragStart
     , onDragBy = Just << OnDragBy
@@ -49,7 +49,7 @@ defaultKey =
     "defaultKey"
 
 
-startDragging : Position -> Msg
+startDragging : Position -> Msg Key
 startDragging =
     StartDragging defaultKey
 
